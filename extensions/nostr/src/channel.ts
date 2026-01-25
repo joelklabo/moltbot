@@ -296,7 +296,9 @@ export const nostrPlugin: ChannelPlugin<ResolvedNostrAccount> = {
                   payload.text ?? "",
                   tableMode
                 );
+                ctx.log?.debug(`[${account.accountId}] Delivering reply to ${senderPubkey.slice(0, 8)}: ${message.slice(0, 50)}...`);
                 await reply(message);
+                ctx.log?.info(`[${account.accountId}] Reply delivered to ${senderPubkey.slice(0, 8)}`);
               },
               onError: (err, info) => {
                 ctx.log?.error(`[${account.accountId}] nostr ${info.kind} reply failed: ${String(err)}`);
@@ -306,7 +308,7 @@ export const nostrPlugin: ChannelPlugin<ResolvedNostrAccount> = {
             });
 
           // Dispatch the reply
-          await runtime.channel.reply.dispatchReplyFromConfig({
+          const { queuedFinal, counts } = await runtime.channel.reply.dispatchReplyFromConfig({
             ctx: ctxPayload,
             cfg,
             dispatcher,
@@ -316,6 +318,12 @@ export const nostrPlugin: ChannelPlugin<ResolvedNostrAccount> = {
             },
           });
           markDispatchIdle();
+
+          if (queuedFinal) {
+            ctx.log?.info(`[${account.accountId}] Sent ${counts.final} reply(s) to ${senderPubkey.slice(0, 8)}`);
+          } else {
+            ctx.log?.debug(`[${account.accountId}] No reply generated for ${senderPubkey.slice(0, 8)}`);
+          }
         },
         onError: (error, context) => {
           ctx.log?.error(`[${account.accountId}] Nostr error (${context}): ${error.message}`);

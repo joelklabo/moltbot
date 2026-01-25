@@ -1,7 +1,9 @@
 import {
   buildChannelConfigSchema,
+  createTypingCallbacks,
   DEFAULT_ACCOUNT_ID,
   formatPairingApproveHint,
+  logTypingFailure,
   type ChannelPlugin,
 } from "clawdbot/plugin-sdk";
 
@@ -199,10 +201,6 @@ export const nostrPlugin: ChannelPlugin<ResolvedNostrAccount> = {
   gateway: {
     startAccount: async (ctx) => {
       const account = ctx.account;
-      ctx.setStatus({
-        accountId: account.accountId,
-        publicKey: account.publicKey,
-      });
       ctx.log?.info(`[${account.accountId}] starting Nostr provider (pubkey: ${account.publicKey})`);
 
       if (!account.configured) {
@@ -221,6 +219,30 @@ export const nostrPlugin: ChannelPlugin<ResolvedNostrAccount> = {
         onMessage: async (senderPubkey, text, reply) => {
           ctx.log?.debug(`[${account.accountId}] DM from ${senderPubkey}: ${text.slice(0, 50)}...`);
 
+          // Create typing callbacks for this conversation
+          const typingCallbacks = busHandle
+            ? createTypingCallbacks({
+                start: () => busHandle!.sendTypingStart(senderPubkey),
+                stop: () => busHandle!.sendTypingStop(senderPubkey),
+                onStartError: (err) =>
+                  logTypingFailure({
+                    log: (msg) => ctx.log?.warn(msg),
+                    channel: "nostr",
+                    target: senderPubkey,
+                    action: "start",
+                    error: err,
+                  }),
+                onStopError: (err) =>
+                  logTypingFailure({
+                    log: (msg) => ctx.log?.warn(msg),
+                    channel: "nostr",
+                    target: senderPubkey,
+                    action: "stop",
+                    error: err,
+                  }),
+              })
+            : undefined;
+
           // Forward to clawdbot's message pipeline
           await runtime.channel.reply.handleInboundMessage({
             channel: "nostr",
@@ -232,6 +254,7 @@ export const nostrPlugin: ChannelPlugin<ResolvedNostrAccount> = {
             reply: async (responseText: string) => {
               await reply(responseText);
             },
+            typing: typingCallbacks,
           });
         },
         onError: (error, context) => {
@@ -271,15 +294,20 @@ export const nostrPlugin: ChannelPlugin<ResolvedNostrAccount> = {
 
       ctx.log?.info(`[${account.accountId}] Nostr provider started, connected to ${account.relays.length} relay(s)`);
 
-      // Return cleanup function
-      return {
-        stop: () => {
-          bus.close();
-          activeBuses.delete(account.accountId);
-          metricsSnapshots.delete(account.accountId);
-          ctx.log?.info(`[${account.accountId}] Nostr provider stopped`);
-        },
-      };
+      // Wait for abort signal (keeps the provider running until stopped)
+      await new Promise<void>((resolve) => {
+        if (ctx.abortSignal?.aborted) {
+          resolve();
+          return;
+        }
+        ctx.abortSignal?.addEventListener("abort", () => resolve(), { once: true });
+      });
+
+      // Cleanup when stopped
+      bus.close();
+      activeBuses.delete(account.accountId);
+      metricsSnapshots.delete(account.accountId);
+      ctx.log?.info(`[${account.accountId}] Nostr provider stopped`);
     },
   },
 };

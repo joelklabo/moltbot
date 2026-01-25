@@ -1,5 +1,6 @@
 import {
   buildChannelConfigSchema,
+  createReplyPrefixContext,
   createTypingCallbacks,
   DEFAULT_ACCOUNT_ID,
   formatPairingApproveHint,
@@ -219,6 +220,16 @@ export const nostrPlugin: ChannelPlugin<ResolvedNostrAccount> = {
         onMessage: async (senderPubkey, text, reply) => {
           ctx.log?.debug(`[${account.accountId}] DM from ${senderPubkey}: ${text.slice(0, 50)}...`);
 
+          const cfg = runtime.config.loadConfig();
+
+          // Resolve agent route for this DM
+          const route = runtime.channel.routing.resolveAgentRoute({
+            cfg,
+            channel: "nostr",
+            accountId: account.accountId,
+            peer: { kind: "dm", id: senderPubkey },
+          });
+
           // Create typing callbacks for this conversation
           const typingCallbacks = busHandle
             ? createTypingCallbacks({
@@ -243,19 +254,68 @@ export const nostrPlugin: ChannelPlugin<ResolvedNostrAccount> = {
               })
             : undefined;
 
-          // Forward to clawdbot's message pipeline
-          await runtime.channel.reply.handleInboundMessage({
+          // Build the inbound message context
+          const ctxPayload = runtime.channel.reply.finalizeInboundContext({
+            Body: text,
+            RawBody: text,
+            CommandBody: text,
+            From: `nostr:${senderPubkey}`,
+            To: `nostr:${account.publicKey}`,
+            SessionKey: route.sessionKey,
+            AccountId: account.accountId,
+            ChatType: "direct",
+            SenderName: senderPubkey.slice(0, 8),
+            SenderId: senderPubkey,
+            Provider: "nostr" as const,
+            Surface: "nostr" as const,
+            Timestamp: Date.now(),
+            CommandAuthorized: true, // TODO: implement proper authorization
+            CommandSource: "text" as const,
+            OriginatingChannel: "nostr" as const,
+            OriginatingTo: `nostr:${senderPubkey}`,
+          });
+
+          // Get table mode for formatting
+          const tableMode = runtime.channel.text.resolveMarkdownTableMode({
+            cfg,
             channel: "nostr",
             accountId: account.accountId,
-            senderId: senderPubkey,
-            chatType: "direct",
-            chatId: senderPubkey, // For DMs, chatId is the sender's pubkey
-            text,
-            reply: async (responseText: string) => {
-              await reply(responseText);
-            },
-            typing: typingCallbacks,
           });
+
+          // Create reply prefix context
+          const prefixContext = createReplyPrefixContext({ cfg, agentId: route.agentId });
+
+          // Create the reply dispatcher
+          const { dispatcher, replyOptions, markDispatchIdle } =
+            runtime.channel.reply.createReplyDispatcherWithTyping({
+              responsePrefix: prefixContext.responsePrefix,
+              responsePrefixContextProvider: prefixContext.responsePrefixContextProvider,
+              humanDelay: runtime.channel.reply.resolveHumanDelayConfig(cfg, route.agentId),
+              deliver: async (payload) => {
+                const message = runtime.channel.text.convertMarkdownTables(
+                  payload.text ?? "",
+                  tableMode
+                );
+                await reply(message);
+              },
+              onError: (err, info) => {
+                ctx.log?.error(`[${account.accountId}] nostr ${info.kind} reply failed: ${String(err)}`);
+              },
+              onReplyStart: typingCallbacks?.onReplyStart,
+              onIdle: typingCallbacks?.onIdle,
+            });
+
+          // Dispatch the reply
+          await runtime.channel.reply.dispatchReplyFromConfig({
+            ctx: ctxPayload,
+            cfg,
+            dispatcher,
+            replyOptions: {
+              ...replyOptions,
+              onModelSelected: prefixContext.onModelSelected,
+            },
+          });
+          markDispatchIdle();
         },
         onError: (error, context) => {
           ctx.log?.error(`[${account.accountId}] Nostr error (${context}): ${error.message}`);

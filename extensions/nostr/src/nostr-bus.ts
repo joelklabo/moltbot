@@ -699,6 +699,7 @@ async function sendEncryptedDm(
       // Record success
       cb?.recordSuccess();
       healthTracker.recordSuccess(relay, latency);
+      metrics.emit("dm.sent", 1, { relay, latency });
 
       return; // Success - exit early
     } catch (err) {

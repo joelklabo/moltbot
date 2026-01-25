@@ -71,7 +71,8 @@ export interface NostrBusOptions {
   onMessage: (
     pubkey: string,
     text: string,
-    reply: (text: string) => Promise<void>
+    reply: (text: string) => Promise<void>,
+    eventId: string
   ) => Promise<void>;
   /** Called on errors (optional) */
   onError?: (error: Error, context: string) => void;
@@ -505,7 +506,7 @@ export async function startNostrBus(
       };
 
       // Call the message handler
-      await onMessage(event.pubkey, plaintext, replyTo);
+      await onMessage(event.pubkey, plaintext, replyTo, event.id);
 
       // Mark as processed
       metrics.emit("event.processed");

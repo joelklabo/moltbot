@@ -217,7 +217,7 @@ export const nostrPlugin: ChannelPlugin<ResolvedNostrAccount> = {
         accountId: account.accountId,
         privateKey: account.privateKey,
         relays: account.relays,
-        onMessage: async (senderPubkey, text, reply) => {
+        onMessage: async (senderPubkey, text, reply, eventId) => {
           ctx.log?.debug(`[${account.accountId}] DM from ${senderPubkey}: ${text.slice(0, 50)}...`);
 
           const cfg = runtime.config.loadConfig();
@@ -229,6 +229,8 @@ export const nostrPlugin: ChannelPlugin<ResolvedNostrAccount> = {
             accountId: account.accountId,
             peer: { kind: "dm", id: senderPubkey },
           });
+
+          ctx.log?.debug(`[${account.accountId}] Route resolved: sessionKey=${route.sessionKey}, agentId=${route.agentId}`);
 
           // Create typing callbacks for this conversation
           const typingCallbacks = busHandle
@@ -269,6 +271,7 @@ export const nostrPlugin: ChannelPlugin<ResolvedNostrAccount> = {
             Provider: "nostr" as const,
             Surface: "nostr" as const,
             Timestamp: Date.now(),
+            MessageSid: eventId, // Nostr event ID for deduplication
             CommandAuthorized: true, // TODO: implement proper authorization
             CommandSource: "text" as const,
             OriginatingChannel: "nostr" as const,

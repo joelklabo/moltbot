@@ -8,7 +8,7 @@
       "./index.ts"
     ]
   },
-  "dependencies": {
-    "clawdbot": "workspace:*"
+  "peerDependencies": {
+    "clawdbot": "*"
   }
 }

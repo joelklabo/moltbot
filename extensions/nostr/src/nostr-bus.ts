@@ -679,11 +679,13 @@ async function sendEncryptedDm(
     sk
   );
 
-  // Sort relays by health score (best first)
+  // Publish to ALL available relays for better message delivery
+  // (Relays don't reliably replicate, so send to multiple)
   const sortedRelays = healthTracker.getSortedRelays(relays);
 
-  // Try relays in order of health, respecting circuit breakers
+  let successCount = 0;
   let lastError: Error | undefined;
+
   for (const relay of sortedRelays) {
     const cb = circuitBreakers.get(relay);
 
@@ -701,8 +703,7 @@ async function sendEncryptedDm(
       cb?.recordSuccess();
       healthTracker.recordSuccess(relay, latency);
       metrics.emit("dm.sent", 1, { relay, latency });
-
-      return; // Success - exit early
+      successCount++;
     } catch (err) {
       lastError = err as Error;
       const latency = Date.now() - startTime;
@@ -716,7 +717,9 @@ async function sendEncryptedDm(
     }
   }
 
-  throw new Error(`Failed to publish to any relay: ${lastError?.message}`);
+  if (successCount === 0) {
+    throw new Error(`Failed to publish to any relay: ${lastError?.message}`);
+  }
 }
 
 // ============================================================================

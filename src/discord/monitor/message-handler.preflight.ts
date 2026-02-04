@@ -46,7 +46,12 @@ import {
   resolveDiscordSystemLocation,
   resolveTimestampMs,
 } from "./format.js";
-import { resolveDiscordChannelInfo, resolveDiscordMessageText } from "./message-utils.js";
+import {
+  hasDiscordForwardedMessageFromAuthor,
+  resolveDiscordChannelInfo,
+  resolveDiscordForwardedCommandText,
+  resolveDiscordMessageText,
+} from "./message-utils.js";
 import { resolveDiscordSenderIdentity, resolveDiscordWebhookId } from "./sender-identity.js";
 import { resolveDiscordSystemEvent } from "./system-events.js";
 import { resolveDiscordThreadChannel, resolveDiscordThreadParentInfo } from "./threading.js";
@@ -67,9 +72,23 @@ export async function preflightDiscordMessage(
   }
 
   const allowBots = params.discordConfig?.allowBots ?? false;
-  if (params.botUserId && author.id === params.botUserId) {
-    // Always ignore own messages to prevent self-reply loops
-    return null;
+  const forwardedCommands = params.discordConfig?.forwardedCommands ?? "self";
+  const forwardedCommandText = resolveDiscordForwardedCommandText(message);
+  const forwardedFromSender = hasDiscordForwardedMessageFromAuthor(message, author.id ?? null);
+  const forwardedCommandAllowed =
+    forwardedCommandText &&
+    (forwardedCommands === "any" || (forwardedCommands === "self" && forwardedFromSender));
+  const isSelfBot = Boolean(params.botUserId && author.id === params.botUserId);
+  if (author.bot) {
+    if (isSelfBot) {
+      // Allow self-bot messages only when explicitly forwarding actionable content.
+      if (!forwardedCommandAllowed) {
+        return null;
+      }
+    } else if (!allowBots) {
+      logVerbose("discord: drop bot message (allowBots=false)");
+      return null;
+    }
   }
 
   const pluralkitConfig = params.discordConfig?.pluralkit;
@@ -181,12 +200,19 @@ export async function preflightDiscordMessage(
   }
 
   const botId = params.botUserId;
-  const baseText = resolveDiscordMessageText(message, {
+  let baseText = resolveDiscordMessageText(message, {
     includeForwarded: false,
   });
-  const messageText = resolveDiscordMessageText(message, {
+  let messageText = resolveDiscordMessageText(message, {
     includeForwarded: true,
   });
+  if (!baseText && forwardedCommandAllowed) {
+    baseText = forwardedCommandText;
+    messageText = forwardedCommandText;
+    logVerbose(
+      `discord: using forwarded content as command text for ${message.id} (author=${author.id})`,
+    );
+  }
   recordChannelActivity({
     channel: "discord",
     accountId: params.accountId,

@@ -4,7 +4,7 @@ import { metrics, trace, SpanStatusCode } from "@opentelemetry/api";
 import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-http";
 import { OTLPMetricExporter } from "@opentelemetry/exporter-metrics-otlp-http";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
-import { Resource } from "@opentelemetry/resources";
+import { resourceFromAttributes } from "@opentelemetry/resources";
 import { BatchLogRecordProcessor, LoggerProvider } from "@opentelemetry/sdk-logs";
 import { PeriodicExportingMetricReader } from "@opentelemetry/sdk-metrics";
 import { NodeSDK } from "@opentelemetry/sdk-node";
@@ -73,7 +73,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         return;
       }
 
-      const resource = new Resource({
+      const resource = resourceFromAttributes({
         [SemanticResourceAttributes.SERVICE_NAME]: serviceName,
       });
 
@@ -172,6 +172,17 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         unit: "ms",
         description: "Message processing duration",
       });
+      const messageStepCounter = meter.createCounter("openclaw.message.step", {
+        unit: "1",
+        description: "Message step events",
+      });
+      const messageStepDurationHistogram = meter.createHistogram(
+        "openclaw.message.step.duration_ms",
+        {
+          unit: "ms",
+          description: "Message step duration",
+        },
+      );
       const queueDepthHistogram = meter.createHistogram("openclaw.queue.depth", {
         unit: "1",
         description: "Queue depth on enqueue/dequeue",
@@ -210,15 +221,17 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
           ...(logUrl ? { url: logUrl } : {}),
           ...(headers ? { headers } : {}),
         });
-        logProvider = new LoggerProvider({ resource });
-        logProvider.addLogRecordProcessor(
-          new BatchLogRecordProcessor(
-            logExporter,
-            typeof otel.flushIntervalMs === "number"
-              ? { scheduledDelayMillis: Math.max(1000, otel.flushIntervalMs) }
-              : {},
-          ),
-        );
+        logProvider = new LoggerProvider({
+          resource,
+          processors: [
+            new BatchLogRecordProcessor(
+              logExporter,
+              typeof otel.flushIntervalMs === "number"
+                ? { scheduledDelayMillis: Math.max(1000, otel.flushIntervalMs) }
+                : {},
+            ),
+          ],
+        });
         const otelLogger = logProvider.getLogger("openclaw");
 
         stopLogTransport = registerLogTransport((logObj) => {
@@ -508,6 +521,37 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         span.end();
       };
 
+      const recordMessageStep = (
+        evt: Extract<DiagnosticEventPayload, { type: "message.step" }>,
+      ) => {
+        const attrs = {
+          "openclaw.channel": evt.channel ?? "unknown",
+          "openclaw.step": evt.step ?? "unknown",
+        };
+        messageStepCounter.add(1, attrs);
+        if (typeof evt.durationMs === "number") {
+          messageStepDurationHistogram.record(evt.durationMs, attrs);
+        }
+        if (!tracesEnabled) {
+          return;
+        }
+        const spanAttrs: Record<string, string | number> = { ...attrs };
+        if (evt.sessionKey) {
+          spanAttrs["openclaw.sessionKey"] = evt.sessionKey;
+        }
+        if (evt.sessionId) {
+          spanAttrs["openclaw.sessionId"] = evt.sessionId;
+        }
+        if (evt.chatId !== undefined) {
+          spanAttrs["openclaw.chatId"] = String(evt.chatId);
+        }
+        if (evt.messageId !== undefined) {
+          spanAttrs["openclaw.messageId"] = String(evt.messageId);
+        }
+        const span = spanWithDuration("openclaw.message.step", spanAttrs, evt.durationMs);
+        span.end();
+      };
+
       const recordLaneEnqueue = (
         evt: Extract<DiagnosticEventPayload, { type: "queue.lane.enqueue" }>,
       ) => {
@@ -591,6 +635,9 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
             return;
           case "message.processed":
             recordMessageProcessed(evt);
+            return;
+          case "message.step":
+            recordMessageStep(evt);
             return;
           case "queue.lane.enqueue":
             recordLaneEnqueue(evt);

@@ -189,6 +189,51 @@ export function resolveDiscordMessageText(
   return `${baseText}\n${forwardedText}`;
 }
 
+export function resolveDiscordForwardedCommandText(message: Message): string {
+  const snapshots = resolveDiscordMessageSnapshots(message);
+  if (snapshots.length === 0) {
+    return "";
+  }
+  const forwardedBlocks = snapshots
+    .map((snapshot) => {
+      const snapshotMessage = snapshot.message;
+      if (!snapshotMessage) {
+        return null;
+      }
+      const text = resolveDiscordSnapshotMessageText(snapshotMessage);
+      if (!text) {
+        return null;
+      }
+      return text;
+    })
+    .filter((entry): entry is string => Boolean(entry));
+  if (forwardedBlocks.length === 0) {
+    return "";
+  }
+  return forwardedBlocks.join("\n\n");
+}
+
+export function hasDiscordForwardedMessageFromAuthor(
+  message: Message,
+  authorId?: string | null,
+): boolean {
+  const resolvedAuthorId = authorId?.trim();
+  if (!resolvedAuthorId) {
+    return false;
+  }
+  const snapshots = resolveDiscordMessageSnapshots(message);
+  if (snapshots.length === 0) {
+    return false;
+  }
+  const authorIds = snapshots
+    .map((snapshot) => snapshot.message?.author?.id)
+    .filter((id): id is string => typeof id === "string" && id.trim().length > 0);
+  if (authorIds.length === 0) {
+    return false;
+  }
+  return authorIds.every((id) => id === resolvedAuthorId);
+}
+
 function resolveDiscordForwardedMessagesText(message: Message): string {
   const snapshots = resolveDiscordMessageSnapshots(message);
   if (snapshots.length === 0) {

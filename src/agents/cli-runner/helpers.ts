@@ -386,11 +386,46 @@ export function parseCliJsonl(raw: string, backend: CliBackendConfig): CliOutput
     if (isRecord(parsed.usage)) {
       usage = toUsage(parsed.usage) ?? usage;
     }
+    const parsedType = typeof parsed.type === "string" ? parsed.type.toLowerCase() : "";
+    if (parsedType.includes("output_text") || parsedType.includes("message")) {
+      const outputText =
+        typeof parsed.text === "string"
+          ? parsed.text
+          : typeof parsed.delta === "string"
+            ? parsed.delta
+            : typeof parsed.output_text === "string"
+              ? parsed.output_text
+              : undefined;
+      if (outputText) {
+        texts.push(outputText);
+      }
+    }
+
     const item = isRecord(parsed.item) ? parsed.item : null;
-    if (item && typeof item.text === "string") {
-      const type = typeof item.type === "string" ? item.type.toLowerCase() : "";
-      if (!type || type.includes("message")) {
+    if (item) {
+      const itemType = typeof item.type === "string" ? item.type.toLowerCase() : "";
+      const itemRole = typeof item.role === "string" ? item.role.toLowerCase() : "";
+      const shouldCollect =
+        itemRole === "assistant" ||
+        itemType.includes("message") ||
+        itemType.includes("output") ||
+        itemType.includes("final");
+      if (!shouldCollect) {
+        continue;
+      }
+      if (typeof item.text === "string" && item.text.trim()) {
         texts.push(item.text);
+        continue;
+      }
+      if (Array.isArray(item.content)) {
+        for (const part of item.content) {
+          if (isRecord(part) && typeof part.text === "string" && part.text.trim()) {
+            texts.push(part.text);
+          }
+        }
+      }
+      if (typeof item.output_text === "string" && item.output_text.trim()) {
+        texts.push(item.output_text);
       }
     }
   }

@@ -112,6 +112,13 @@ export type DiscordAccountConfig = {
   /** Allow bot-authored messages to trigger replies (default: false). */
   allowBots?: boolean;
   /**
+   * Control whether forwarded Discord messages are treated as command text.
+   * - "off": forwarded messages are context only
+   * - "self": forwarded messages are actionable only when authored by the sender (default)
+   * - "any": forwarded messages are actionable regardless of author
+   */
+  forwardedCommands?: "off" | "self" | "any";
+  /**
    * Controls how guild channel messages are handled:
    * - "open": guild channels bypass allowlists; mention-gating applies
    * - "disabled": block all guild channel messages

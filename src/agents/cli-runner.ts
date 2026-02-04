@@ -263,7 +263,20 @@ export async function runCliAgent(params: {
       }
       if (outputMode === "jsonl") {
         const parsed = parseCliJsonl(stdout, backend);
-        return parsed ?? { text: stdout };
+        if (parsed) {
+          return parsed;
+        }
+        const looksLikeJsonl = stdout
+          .split(/\r?\n/g)
+          .some((line) => line.trim().startsWith("{") && line.includes('"type"'));
+        if (looksLikeJsonl) {
+          throw new FailoverError("CLI jsonl output contained no assistant message.", {
+            reason: "format",
+            provider: params.provider,
+            model: modelId,
+          });
+        }
+        return { text: stdout };
       }
 
       const parsed = parseCliJson(stdout, backend);

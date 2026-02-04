@@ -237,6 +237,7 @@ export type {
   DiagnosticLaneEnqueueEvent,
   DiagnosticMessageProcessedEvent,
   DiagnosticMessageQueuedEvent,
+  DiagnosticMessageStepEvent,
   DiagnosticRunAttemptEvent,
   DiagnosticSessionState,
   DiagnosticSessionStateEvent,

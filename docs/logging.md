@@ -172,6 +172,7 @@ Message flow:
 - `webhook.error`: webhook handler errors.
 - `message.queued`: message enqueued for processing.
 - `message.processed`: outcome + duration + optional error.
+- `message.step`: step-level duration (`inbound`, `context`, `reply`).
 
 Queue + session:
 
@@ -290,6 +291,9 @@ Message flow:
   `openclaw.outcome`)
 - `openclaw.message.duration_ms` (histogram, attrs: `openclaw.channel`,
   `openclaw.outcome`)
+- `openclaw.message.step` (counter, attrs: `openclaw.channel`, `openclaw.step`)
+- `openclaw.message.step.duration_ms` (histogram, attrs: `openclaw.channel`,
+  `openclaw.step`)
 
 Queues + sessions:
 
@@ -318,6 +322,9 @@ Queues + sessions:
   - `openclaw.channel`, `openclaw.outcome`, `openclaw.chatId`,
     `openclaw.messageId`, `openclaw.sessionKey`, `openclaw.sessionId`,
     `openclaw.reason`
+- `openclaw.message.step`
+  - `openclaw.channel`, `openclaw.step`, `openclaw.chatId`,
+    `openclaw.messageId`, `openclaw.sessionKey`, `openclaw.sessionId`
 - `openclaw.session.stuck`
   - `openclaw.state`, `openclaw.ageMs`, `openclaw.queueDepth`,
     `openclaw.sessionKey`, `openclaw.sessionId`

@@ -9,6 +9,7 @@ import { isDiagnosticsEnabled } from "../../infra/diagnostic-events.js";
 import {
   logMessageProcessed,
   logMessageQueued,
+  logMessageStep,
   logSessionStateChange,
 } from "../../logging/diagnostic.js";
 import { getGlobalHookRunner } from "../../plugins/hook-runner-global.js";
@@ -254,6 +255,7 @@ export async function dispatchReplyFromConfig(params: {
       const payload = {
         text: formatAbortReplyText(fastAbort.stoppedSubagents),
       } satisfies ReplyPayload;
+      const replyStartAt = diagnosticsEnabled ? Date.now() : 0;
       let queuedFinal = false;
       let routedFinalCount = 0;
       if (shouldRouteToOriginating && originatingChannel && originatingTo) {
@@ -279,6 +281,16 @@ export async function dispatchReplyFromConfig(params: {
         queuedFinal = dispatcher.sendFinalReply(payload);
       }
       await dispatcher.waitForIdle();
+      if (diagnosticsEnabled) {
+        logMessageStep({
+          step: "reply",
+          channel,
+          chatId,
+          messageId,
+          sessionKey,
+          durationMs: Date.now() - replyStartAt,
+        });
+      }
       const counts = dispatcher.getQueuedCounts();
       counts.final += routedFinalCount;
       recordProcessed("completed", { reason: "fast_abort" });
@@ -348,7 +360,7 @@ export async function dispatchReplyFromConfig(params: {
     );
 
     const replies = replyResult ? (Array.isArray(replyResult) ? replyResult : [replyResult]) : [];
-
+    const replyStartAt = diagnosticsEnabled ? Date.now() : 0;
     let queuedFinal = false;
     let routedFinalCount = 0;
     for (const reply of replies) {
@@ -443,6 +455,16 @@ export async function dispatchReplyFromConfig(params: {
     }
 
     await dispatcher.waitForIdle();
+    if (diagnosticsEnabled) {
+      logMessageStep({
+        step: "reply",
+        channel,
+        chatId,
+        messageId,
+        sessionKey,
+        durationMs: Date.now() - replyStartAt,
+      });
+    }
 
     const counts = dispatcher.getQueuedCounts();
     counts.final += routedFinalCount;

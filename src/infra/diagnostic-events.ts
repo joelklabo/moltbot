@@ -75,6 +75,17 @@ export type DiagnosticMessageProcessedEvent = DiagnosticBaseEvent & {
   error?: string;
 };
 
+export type DiagnosticMessageStepEvent = DiagnosticBaseEvent & {
+  type: "message.step";
+  step: string;
+  channel?: string;
+  messageId?: number | string;
+  chatId?: number | string;
+  sessionKey?: string;
+  sessionId?: string;
+  durationMs?: number;
+};
+
 export type DiagnosticSessionStateEvent = DiagnosticBaseEvent & {
   type: "session.state";
   sessionKey?: string;
@@ -134,6 +145,7 @@ export type DiagnosticEventPayload =
   | DiagnosticWebhookErrorEvent
   | DiagnosticMessageQueuedEvent
   | DiagnosticMessageProcessedEvent
+  | DiagnosticMessageStepEvent
   | DiagnosticSessionStateEvent
   | DiagnosticSessionStuckEvent
   | DiagnosticLaneEnqueueEvent
@@ -146,8 +158,23 @@ export type DiagnosticEventInput = DiagnosticEventPayload extends infer Event
     ? Omit<Event, "seq" | "ts">
     : never
   : never;
-let seq = 0;
-const listeners = new Set<(evt: DiagnosticEventPayload) => void>();
+
+type DiagnosticEventListener = (evt: DiagnosticEventPayload) => void;
+type DiagnosticEventState = {
+  seq: number;
+  listeners: Set<DiagnosticEventListener>;
+};
+
+const DIAGNOSTIC_EVENT_STATE = Symbol.for("openclaw.diagnostic.events");
+const diagnosticEventState: DiagnosticEventState = (() => {
+  const scope = globalThis as typeof globalThis & {
+    [DIAGNOSTIC_EVENT_STATE]?: DiagnosticEventState;
+  };
+  if (!scope[DIAGNOSTIC_EVENT_STATE]) {
+    scope[DIAGNOSTIC_EVENT_STATE] = { seq: 0, listeners: new Set() };
+  }
+  return scope[DIAGNOSTIC_EVENT_STATE];
+})();
 
 export function isDiagnosticsEnabled(config?: OpenClawConfig): boolean {
   return config?.diagnostics?.enabled === true;
@@ -156,10 +183,10 @@ export function isDiagnosticsEnabled(config?: OpenClawConfig): boolean {
 export function emitDiagnosticEvent(event: DiagnosticEventInput) {
   const enriched = {
     ...event,
-    seq: (seq += 1),
+    seq: (diagnosticEventState.seq += 1),
     ts: Date.now(),
   } satisfies DiagnosticEventPayload;
-  for (const listener of listeners) {
+  for (const listener of diagnosticEventState.listeners) {
     try {
       listener(enriched);
     } catch {
@@ -169,11 +196,11 @@ export function emitDiagnosticEvent(event: DiagnosticEventInput) {
 }
 
 export function onDiagnosticEvent(listener: (evt: DiagnosticEventPayload) => void): () => void {
-  listeners.add(listener);
-  return () => listeners.delete(listener);
+  diagnosticEventState.listeners.add(listener);
+  return () => diagnosticEventState.listeners.delete(listener);
 }
 
 export function resetDiagnosticEventsForTest(): void {
-  seq = 0;
-  listeners.clear();
+  diagnosticEventState.seq = 0;
+  diagnosticEventState.listeners.clear();
 }

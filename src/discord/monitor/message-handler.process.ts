@@ -26,6 +26,8 @@ import { createTypingCallbacks } from "../../channels/typing.js";
 import { resolveMarkdownTableMode } from "../../config/markdown-tables.js";
 import { readSessionUpdatedAt, resolveStorePath } from "../../config/sessions.js";
 import { danger, logVerbose, shouldLogVerbose } from "../../globals.js";
+import { isDiagnosticsEnabled } from "../../infra/diagnostic-events.js";
+import { logMessageStep } from "../../logging/diagnostic.js";
 import { buildAgentSessionKey } from "../../routing/resolve-route.js";
 import { resolveThreadSessionKeys } from "../../routing/session-key.js";
 import { truncateUtf16Safe } from "../../utils.js";
@@ -84,6 +86,9 @@ export async function processDiscordMessage(ctx: DiscordMessagePreflightContext)
     route,
     commandAuthorized,
   } = ctx;
+
+  const diagnosticsEnabled = isDiagnosticsEnabled(cfg);
+  const contextStartedAt = diagnosticsEnabled ? Date.now() : 0;
 
   const mediaList = await resolveMediaList(message, mediaMaxBytes);
   const text = messageText;
@@ -315,6 +320,17 @@ export async function processDiscordMessage(ctx: DiscordMessagePreflightContext)
       logVerbose(`discord: failed updating session meta: ${String(err)}`);
     },
   });
+
+  if (diagnosticsEnabled) {
+    logMessageStep({
+      step: "context",
+      channel: "discord",
+      messageId: message.id,
+      chatId: message.channelId,
+      sessionKey: ctxPayload.SessionKey,
+      durationMs: Date.now() - contextStartedAt,
+    });
+  }
 
   if (shouldLogVerbose()) {
     const preview = truncateUtf16Safe(combinedBody, 200).replace(/\n/g, "\\n");

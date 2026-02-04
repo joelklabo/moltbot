@@ -81,6 +81,7 @@ const BASE_METHODS = [
   "agent.identity.get",
   "agent.wait",
   "browser.request",
+  "diagnostics.otel-test",
   // WebChat WebSocket-native chat methods
   "chat.history",
   "chat.abort",

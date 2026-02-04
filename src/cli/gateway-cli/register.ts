@@ -269,6 +269,32 @@ export function registerGatewayCli(program: Command) {
       }),
   );
 
+  gatewayCallOpts(
+    gateway
+      .command("otel-test")
+      .description("Emit a diagnostics OTLP test event (log + metric + trace)")
+      .option("--label <label>", "Optional label for the test event")
+      .action(async (opts) => {
+        await runGatewayCommand(async () => {
+          const label = typeof opts.label === "string" ? opts.label.trim() : "";
+          const params = label ? { label } : {};
+          const result = await callGatewayCli("diagnostics.otel-test", opts, params);
+          if (opts.json) {
+            defaultRuntime.log(JSON.stringify(result, null, 2));
+            return;
+          }
+          const rich = isRich();
+          const payload = result as { messageId?: string; timestamp?: string } | undefined;
+          const messageId = payload?.messageId ?? "ok";
+          const timestamp = payload?.timestamp ?? "";
+          const suffix = timestamp ? ` · ${timestamp}` : "";
+          defaultRuntime.log(
+            `${colorize(rich, theme.success, "OTLP test emitted")}: ${messageId}${suffix}`,
+          );
+        }, "Gateway OTLP self-test failed");
+      }),
+  );
+
   gateway
     .command("probe")
     .description("Show gateway reachability + discovery + health + status summary (local + remote)")

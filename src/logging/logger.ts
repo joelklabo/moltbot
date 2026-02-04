@@ -36,7 +36,22 @@ export type LoggerResolvedSettings = ResolvedSettings;
 export type LogTransportRecord = Record<string, unknown>;
 export type LogTransport = (logObj: LogTransportRecord) => void;
 
-const externalTransports = new Set<LogTransport>();
+type ExternalTransportState = {
+  transports: Set<LogTransport>;
+};
+
+const LOG_TRANSPORT_STATE = Symbol.for("openclaw.logging.transports");
+const externalTransportState: ExternalTransportState = (() => {
+  const scope = globalThis as typeof globalThis & {
+    [LOG_TRANSPORT_STATE]?: ExternalTransportState;
+  };
+  if (!scope[LOG_TRANSPORT_STATE]) {
+    scope[LOG_TRANSPORT_STATE] = { transports: new Set<LogTransport>() };
+  }
+  return scope[LOG_TRANSPORT_STATE];
+})();
+
+const externalTransports = externalTransportState.transports;
 
 function attachExternalTransport(logger: TsLogger<LogObj>, transport: LogTransport): void {
   logger.attachTransport((logObj: LogObj) => {

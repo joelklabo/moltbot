@@ -10,6 +10,8 @@ import {
   resolveInboundDebounceMs,
 } from "../../auto-reply/inbound-debounce.js";
 import { danger } from "../../globals.js";
+import { isDiagnosticsEnabled } from "../../infra/diagnostic-events.js";
+import { logMessageStep } from "../../logging/diagnostic.js";
 import { preflightDiscordMessage } from "./message-handler.preflight.js";
 import { processDiscordMessage } from "./message-handler.process.js";
 import { resolveDiscordMessageText } from "./message-utils.js";
@@ -41,7 +43,11 @@ export function createDiscordMessageHandler(params: {
   const ackReactionScope = params.cfg.messages?.ackReactionScope ?? "group-mentions";
   const debounceMs = resolveInboundDebounceMs({ cfg: params.cfg, channel: "discord" });
 
-  const debouncer = createInboundDebouncer<{ data: DiscordMessageEvent; client: Client }>({
+  const debouncer = createInboundDebouncer<{
+    data: DiscordMessageEvent;
+    client: Client;
+    receivedAt: number;
+  }>({
     debounceMs,
     buildKey: (entry) => {
       const message = entry.data.message;
@@ -74,6 +80,23 @@ export function createDiscordMessageHandler(params: {
       if (!last) {
         return;
       }
+      const diagnosticsEnabled = isDiagnosticsEnabled(params.cfg);
+      const firstReceivedAt = diagnosticsEnabled
+        ? entries.reduce((min, entry) => Math.min(min, entry.receivedAt), entries[0].receivedAt)
+        : 0;
+      const recordInboundStep = (ctx: Awaited<ReturnType<typeof preflightDiscordMessage>>) => {
+        if (!diagnosticsEnabled || !ctx) {
+          return;
+        }
+        logMessageStep({
+          step: "inbound",
+          channel: "discord",
+          messageId: ctx.message.id,
+          chatId: ctx.message.channelId,
+          sessionKey: ctx.route.sessionKey,
+          durationMs: Date.now() - firstReceivedAt,
+        });
+      };
       if (entries.length === 1) {
         const ctx = await preflightDiscordMessage({
           ...params,
@@ -85,6 +108,7 @@ export function createDiscordMessageHandler(params: {
         if (!ctx) {
           return;
         }
+        recordInboundStep(ctx);
         await processDiscordMessage(ctx);
         return;
       }
@@ -116,6 +140,7 @@ export function createDiscordMessageHandler(params: {
       if (!ctx) {
         return;
       }
+      recordInboundStep(ctx);
       if (entries.length > 1) {
         const ids = entries.map((entry) => entry.data.message?.id).filter(Boolean) as string[];
         if (ids.length > 0) {
@@ -138,7 +163,7 @@ export function createDiscordMessageHandler(params: {
 
   return async (data, client) => {
     try {
-      await debouncer.enqueue({ data, client });
+      await debouncer.enqueue({ data, client, receivedAt: Date.now() });
     } catch (err) {
       params.runtime.error?.(danger(`handler failed: ${String(err)}`));
     }

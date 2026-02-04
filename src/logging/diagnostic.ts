@@ -194,6 +194,34 @@ export function logMessageProcessed(params: {
   markActivity();
 }
 
+export function logMessageStep(params: {
+  step: string;
+  channel?: string;
+  messageId?: number | string;
+  chatId?: number | string;
+  sessionId?: string;
+  sessionKey?: string;
+  durationMs?: number;
+}) {
+  const payload = `message step: step=${params.step} channel=${params.channel ?? "unknown"} chatId=${
+    params.chatId ?? "unknown"
+  } messageId=${params.messageId ?? "unknown"} sessionId=${
+    params.sessionId ?? "unknown"
+  } sessionKey=${params.sessionKey ?? "unknown"} duration=${params.durationMs ?? 0}ms`;
+  diag.debug(payload);
+  emitDiagnosticEvent({
+    type: "message.step",
+    step: params.step,
+    channel: params.channel,
+    chatId: params.chatId,
+    messageId: params.messageId,
+    sessionId: params.sessionId,
+    sessionKey: params.sessionKey,
+    durationMs: params.durationMs,
+  });
+  markActivity();
+}
+
 export function logSessionStateChange(
   params: SessionRef & {
     state: SessionStateValue;

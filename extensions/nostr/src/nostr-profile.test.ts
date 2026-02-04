@@ -1,25 +1,19 @@
+import { verifyEvent, getPublicKey } from "nostr-tools";
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { loadWasmAsync, Keys, SecretKey } from "@rust-nostr/nostr-sdk";
+import type { NostrProfile } from "./config-schema.js";
 import {
+  createProfileEvent,
   profileToContent,
   contentToProfile,
   validateProfile,
   sanitizeProfileForDisplay,
   type ProfileContent,
 } from "./nostr-profile.js";
-import type { NostrProfile } from "./config-schema.js";
 
 // Test private key (DO NOT use in production - this is a known test key)
 const TEST_HEX_KEY = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
-
-// WASM must be initialized before key operations
-let TEST_PUBKEY: string;
-beforeEach(async () => {
-  await loadWasmAsync();
-  const secretKey = SecretKey.parse(TEST_HEX_KEY);
-  const keys = new Keys(secretKey);
-  TEST_PUBKEY = keys.publicKey.toHex();
-});
+const TEST_SK = new Uint8Array(TEST_HEX_KEY.match(/.{2}/g)!.map((byte) => parseInt(byte, 16)));
+const TEST_PUBKEY = getPublicKey(TEST_SK);
 
 // ============================================================================
 // Profile Content Conversion Tests
@@ -111,6 +105,84 @@ describe("contentToProfile", () => {
     expect(restored.displayName).toBe(original.displayName);
     expect(restored.about).toBe(original.about);
   });
+});
+
+// ============================================================================
+// Event Creation Tests
+// ============================================================================
+
+describe("createProfileEvent", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2024-01-15T12:00:00Z"));
+  });
+
+  it("creates a valid kind:0 event", () => {
+    const profile: NostrProfile = {
+      name: "testbot",
+      about: "A test bot",
+    };
+
+    const event = createProfileEvent(TEST_SK, profile);
+
+    expect(event.kind).toBe(0);
+    expect(event.pubkey).toBe(TEST_PUBKEY);
+    expect(event.tags).toEqual([]);
+    expect(event.id).toMatch(/^[0-9a-f]{64}$/);
+    expect(event.sig).toMatch(/^[0-9a-f]{128}$/);
+  });
+
+  it("includes profile content as JSON in event content", () => {
+    const profile: NostrProfile = {
+      name: "jsontest",
+      displayName: "JSON Test User",
+      about: "Testing JSON serialization",
+    };
+
+    const event = createProfileEvent(TEST_SK, profile);
+    const parsedContent = JSON.parse(event.content) as ProfileContent;
+
+    expect(parsedContent.name).toBe("jsontest");
+    expect(parsedContent.display_name).toBe("JSON Test User");
+    expect(parsedContent.about).toBe("Testing JSON serialization");
+  });
+
+  it("produces a verifiable signature", () => {
+    const profile: NostrProfile = { name: "signaturetest" };
+    const event = createProfileEvent(TEST_SK, profile);
+
+    expect(verifyEvent(event)).toBe(true);
+  });
+
+  it("uses current timestamp when no lastPublishedAt provided", () => {
+    const profile: NostrProfile = { name: "timestamptest" };
+    const event = createProfileEvent(TEST_SK, profile);
+
+    const expectedTimestamp = Math.floor(Date.now() / 1000);
+    expect(event.created_at).toBe(expectedTimestamp);
+  });
+
+  it("ensures monotonic timestamp when lastPublishedAt is in the future", () => {
+    // Current time is 2024-01-15T12:00:00Z = 1705320000
+    const futureTimestamp = 1705320000 + 3600; // 1 hour in the future
+    const profile: NostrProfile = { name: "monotonictest" };
+
+    const event = createProfileEvent(TEST_SK, profile, futureTimestamp);
+
+    expect(event.created_at).toBe(futureTimestamp + 1);
+  });
+
+  it("uses current time when lastPublishedAt is in the past", () => {
+    const pastTimestamp = 1705320000 - 3600; // 1 hour in the past
+    const profile: NostrProfile = { name: "pasttest" };
+
+    const event = createProfileEvent(TEST_SK, profile, pastTimestamp);
+
+    const expectedTimestamp = Math.floor(Date.now() / 1000);
+    expect(event.created_at).toBe(expectedTimestamp);
+  });
+
+  vi.useRealTimers();
 });
 
 // ============================================================================
@@ -292,9 +364,8 @@ describe("edge cases", () => {
     expect(content.name).toBe("🤖 Bot");
     expect(content.about).toBe("I am a 🤖 robot! 🎉");
 
-    // Verify JSON round-trip preserves emojis
-    const json = JSON.stringify(content);
-    const parsed = JSON.parse(json) as ProfileContent;
+    const event = createProfileEvent(TEST_SK, profile);
+    const parsed = JSON.parse(event.content) as ProfileContent;
     expect(parsed.name).toBe("🤖 Bot");
   });
 
@@ -306,7 +377,9 @@ describe("edge cases", () => {
 
     const content = profileToContent(profile);
     expect(content.name).toBe("日本語ユーザー");
-    expect(content.about).toBe("Привет мир! 你好世界!");
+
+    const event = createProfileEvent(TEST_SK, profile);
+    expect(verifyEvent(event)).toBe(true);
   });
 
   it("handles newlines in about field", () => {
@@ -317,9 +390,8 @@ describe("edge cases", () => {
     const content = profileToContent(profile);
     expect(content.about).toBe("Line 1\nLine 2\nLine 3");
 
-    // Verify JSON round-trip preserves newlines
-    const json = JSON.stringify(content);
-    const parsed = JSON.parse(json) as ProfileContent;
+    const event = createProfileEvent(TEST_SK, profile);
+    const parsed = JSON.parse(event.content) as ProfileContent;
     expect(parsed.about).toBe("Line 1\nLine 2\nLine 3");
   });
 
@@ -332,8 +404,7 @@ describe("edge cases", () => {
     const result = validateProfile(profile);
     expect(result.valid).toBe(true);
 
-    const content = profileToContent(profile);
-    expect(content.name?.length).toBe(256);
-    expect(content.about?.length).toBe(2000);
+    const event = createProfileEvent(TEST_SK, profile);
+    expect(verifyEvent(event)).toBe(true);
   });
 });

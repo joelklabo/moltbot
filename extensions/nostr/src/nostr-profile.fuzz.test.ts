@@ -1,10 +1,6 @@
 import { describe, expect, it } from "vitest";
-import {
-  profileToContent,
-  validateProfile,
-  sanitizeProfileForDisplay,
-} from "./nostr-profile.js";
 import type { NostrProfile } from "./config-schema.js";
+import { profileToContent, validateProfile, sanitizeProfileForDisplay } from "./nostr-profile.js";
 
 // ============================================================================
 // Unicode Attack Vectors

@@ -1,6 +1,7 @@
 import type { OpenClawConfig } from "openclaw/plugin-sdk";
-import { DEFAULT_RELAYS } from "./nostr-bus-rust.js";
 import type { NostrProfile } from "./config-schema.js";
+import { getPublicKeyFromPrivate } from "./nostr-bus.js";
+import { DEFAULT_RELAYS } from "./nostr-bus.js";
 
 export interface NostrAccountConfig {
   enabled?: boolean;
@@ -69,9 +70,14 @@ export function resolveNostrAccount(opts: {
   const privateKey = nostrCfg?.privateKey ?? "";
   const configured = Boolean(privateKey.trim());
 
-  // Public key is derived lazily after WASM init (at startAccount time)
-  // We can't derive it synchronously here since rust-nostr requires async WASM loading
-  const publicKey = "";
+  let publicKey = "";
+  if (configured) {
+    try {
+      publicKey = getPublicKeyFromPrivate(privateKey);
+    } catch {
+      // Invalid key - leave publicKey empty, configured will indicate issues
+    }
+  }
 
   return {
     accountId,

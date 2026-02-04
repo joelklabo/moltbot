@@ -20,9 +20,8 @@ export default defineConfig({
     testTimeout: 120_000,
     hookTimeout: isWindows ? 180_000 : 120_000,
     pool: "forks",
-    // Use singleFork on macOS CI to avoid vitest worker crash (vitest#8564)
-    poolOptions: isMacOS && isCI ? { forks: { singleFork: true } } : undefined,
-    maxWorkers: isCI ? ciWorkers : localWorkers,
+    // Use a single worker on macOS CI to avoid vitest worker crash (vitest#8564).
+    maxWorkers: isMacOS && isCI ? 1 : isCI ? ciWorkers : localWorkers,
     include: ["src/**/*.test.ts", "extensions/**/*.test.ts", "test/format-error.test.ts"],
     setupFiles: ["test/setup.ts"],
     exclude: [

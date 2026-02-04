@@ -93,6 +93,7 @@ export const OpenClawSchema = z
       .object({
         lastTouchedVersion: z.string().optional(),
         lastTouchedAt: z.string().optional(),
+        errorThreadId: z.string().optional(),
       })
       .strict()
       .optional(),

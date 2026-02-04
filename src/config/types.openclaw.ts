@@ -31,6 +31,8 @@ export type OpenClawConfig = {
     lastTouchedVersion?: string;
     /** ISO timestamp when this config was last written. */
     lastTouchedAt?: string;
+    /** Optional error thread id for routing error reports. */
+    errorThreadId?: string;
   };
   auth?: AuthConfig;
   env?: {

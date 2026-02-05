@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createConfigIO } from "./io.js";
 
 async function withTempHome(run: (home: string) => Promise<void>): Promise<void> {
@@ -23,6 +23,19 @@ async function writeConfig(
   await fs.mkdir(dir, { recursive: true });
   const configPath = path.join(dir, filename);
   await fs.writeFile(configPath, JSON.stringify({ gateway: { port } }, null, 2));
+  return configPath;
+}
+
+async function writeConfigWithMeta(
+  home: string,
+  dirname: ".openclaw",
+  meta: { lastTouchedVersion: string },
+  filename: string = "openclaw.json",
+) {
+  const dir = path.join(home, dirname);
+  await fs.mkdir(dir, { recursive: true });
+  const configPath = path.join(dir, filename);
+  await fs.writeFile(configPath, JSON.stringify({ meta }, null, 2));
   return configPath;
 }
 
@@ -58,6 +71,34 @@ describe("config io paths", () => {
       });
       expect(io.configPath).toBe(customPath);
       expect(io.loadConfig().gateway?.port).toBe(20002);
+    });
+  });
+
+  it("does not warn when config was touched by a newer minor version", async () => {
+    await withTempHome(async (home) => {
+      await writeConfigWithMeta(home, ".openclaw", { lastTouchedVersion: "2026.2.1" });
+      const warn = vi.fn();
+      const io = createConfigIO({
+        env: {} as NodeJS.ProcessEnv,
+        homedir: () => home,
+        logger: { warn },
+      });
+      io.loadConfig();
+      expect(warn).not.toHaveBeenCalled();
+    });
+  });
+
+  it("warns when config was touched by a newer major version", async () => {
+    await withTempHome(async (home) => {
+      await writeConfigWithMeta(home, ".openclaw", { lastTouchedVersion: "2027.0.0" });
+      const warn = vi.fn();
+      const io = createConfigIO({
+        env: {} as NodeJS.ProcessEnv,
+        homedir: () => home,
+        logger: { warn },
+      });
+      io.loadConfig();
+      expect(warn).toHaveBeenCalled();
     });
   });
 });

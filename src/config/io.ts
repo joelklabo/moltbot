@@ -30,7 +30,7 @@ import { normalizeConfigPaths } from "./normalize-paths.js";
 import { resolveConfigPath, resolveDefaultConfigCandidates, resolveStateDir } from "./paths.js";
 import { applyConfigOverrides } from "./runtime-overrides.js";
 import { validateConfigObjectWithPlugins } from "./validation.js";
-import { compareOpenClawVersions } from "./version.js";
+import { compareOpenClawVersions, parseOpenClawVersion } from "./version.js";
 
 // Re-export for backwards compatibility
 export { CircularIncludeError, ConfigIncludeError } from "./includes.js";
@@ -148,6 +148,14 @@ function stampConfigVersion(cfg: OpenClawConfig): OpenClawConfig {
 function warnIfConfigFromFuture(cfg: OpenClawConfig, logger: Pick<typeof console, "warn">): void {
   const touched = cfg.meta?.lastTouchedVersion;
   if (!touched) {
+    return;
+  }
+  const parsedCurrent = parseOpenClawVersion(VERSION);
+  const parsedTouched = parseOpenClawVersion(touched);
+  if (!parsedCurrent || !parsedTouched) {
+    return;
+  }
+  if (parsedCurrent.major === parsedTouched.major) {
     return;
   }
   const cmp = compareOpenClawVersions(VERSION, touched);

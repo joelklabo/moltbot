@@ -117,6 +117,24 @@ describe("callGateway url resolution", () => {
 
     expect(lastClientOptions?.url).toBe("wss://override.example/ws");
   });
+
+  it("uses OPENCLAW_GATEWAY_URL env override when set", async () => {
+    loadConfig.mockReturnValue({ gateway: { mode: "local", bind: "loopback" } });
+    resolveGatewayPort.mockReturnValue(18789);
+    pickPrimaryTailnetIPv4.mockReturnValue(undefined);
+    const prev = process.env.OPENCLAW_GATEWAY_URL;
+    process.env.OPENCLAW_GATEWAY_URL = "wss://env.example/ws";
+    try {
+      await callGateway({ method: "health" });
+      expect(lastClientOptions?.url).toBe("wss://env.example/ws");
+    } finally {
+      if (prev === undefined) {
+        delete process.env.OPENCLAW_GATEWAY_URL;
+      } else {
+        process.env.OPENCLAW_GATEWAY_URL = prev;
+      }
+    }
+  });
 });
 
 describe("buildGatewayConnectionDetails", () => {
@@ -143,6 +161,28 @@ describe("buildGatewayConnectionDetails", () => {
     expect(details.remoteFallbackNote).toBeUndefined();
     expect(details.message).toContain("Gateway target: wss://example.com/ws");
     expect(details.message).toContain("Source: cli --url");
+  });
+
+  it("uses OPENCLAW_GATEWAY_URL when present", () => {
+    loadConfig.mockReturnValue({
+      gateway: { mode: "local", bind: "loopback" },
+    });
+    resolveGatewayPort.mockReturnValue(18800);
+    pickPrimaryTailnetIPv4.mockReturnValue(undefined);
+    const prev = process.env.OPENCLAW_GATEWAY_URL;
+    process.env.OPENCLAW_GATEWAY_URL = "wss://env.example/ws";
+    try {
+      const details = buildGatewayConnectionDetails();
+      expect(details.url).toBe("wss://env.example/ws");
+      expect(details.urlSource).toBe("env OPENCLAW_GATEWAY_URL");
+      expect(details.bindDetail).toBeUndefined();
+    } finally {
+      if (prev === undefined) {
+        delete process.env.OPENCLAW_GATEWAY_URL;
+      } else {
+        process.env.OPENCLAW_GATEWAY_URL = prev;
+      }
+    }
   });
 
   it("emits a remote fallback note when remote url is missing", () => {

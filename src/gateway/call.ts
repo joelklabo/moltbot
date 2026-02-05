@@ -55,6 +55,8 @@ export function buildGatewayConnectionDetails(
   options: { config?: OpenClawConfig; url?: string; configPath?: string } = {},
 ): GatewayConnectionDetails {
   const config = options.config ?? loadConfig();
+  const envUrl =
+    process.env.OPENCLAW_GATEWAY_URL?.trim() || process.env.CLAWDBOT_GATEWAY_URL?.trim();
   const configPath =
     options.configPath ?? resolveConfigPath(process.env, resolveStateDir(process.env));
   const isRemoteMode = config.gateway?.mode === "remote";
@@ -72,13 +74,17 @@ export function buildGatewayConnectionDetails(
   const urlOverride =
     typeof options.url === "string" && options.url.trim().length > 0
       ? options.url.trim()
-      : undefined;
+      : envUrl
+        ? envUrl
+        : undefined;
   const remoteUrl =
     typeof remote?.url === "string" && remote.url.trim().length > 0 ? remote.url.trim() : undefined;
   const remoteMisconfigured = isRemoteMode && !urlOverride && !remoteUrl;
   const url = urlOverride || remoteUrl || localUrl;
   const urlSource = urlOverride
-    ? "cli --url"
+    ? options.url && options.url.trim().length > 0
+      ? "cli --url"
+      : "env OPENCLAW_GATEWAY_URL"
     : remoteUrl
       ? "config gateway.remote.url"
       : remoteMisconfigured
@@ -116,11 +122,14 @@ export async function callGateway<T = Record<string, unknown>>(
   const config = opts.config ?? loadConfig();
   const isRemoteMode = config.gateway?.mode === "remote";
   const remote = isRemoteMode ? config.gateway?.remote : undefined;
+  const envUrl =
+    process.env.OPENCLAW_GATEWAY_URL?.trim() || process.env.CLAWDBOT_GATEWAY_URL?.trim();
   const urlOverride =
     typeof opts.url === "string" && opts.url.trim().length > 0 ? opts.url.trim() : undefined;
+  const effectiveOverride = urlOverride || envUrl;
   const remoteUrl =
     typeof remote?.url === "string" && remote.url.trim().length > 0 ? remote.url.trim() : undefined;
-  if (isRemoteMode && !urlOverride && !remoteUrl) {
+  if (isRemoteMode && !effectiveOverride && !remoteUrl) {
     const configPath =
       opts.configPath ?? resolveConfigPath(process.env, resolveStateDir(process.env));
     throw new Error(
@@ -135,7 +144,7 @@ export async function callGateway<T = Record<string, unknown>>(
   const authPassword = config.gateway?.auth?.password;
   const connectionDetails = buildGatewayConnectionDetails({
     config,
-    url: urlOverride,
+    url: effectiveOverride,
     ...(opts.configPath ? { configPath: opts.configPath } : {}),
   });
   const url = connectionDetails.url;

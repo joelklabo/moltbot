@@ -91,11 +91,7 @@ export function formatGatewayChannelsStatusLines(payload: Record<string, unknown
         | { intents?: { messageContent?: string } }
         | undefined;
       const messageContent = application?.intents?.messageContent;
-      if (
-        typeof messageContent === "string" &&
-        messageContent.length > 0 &&
-        messageContent !== "enabled"
-      ) {
+      if (messageContent === "disabled") {
         bits.push(`intents:content=${messageContent}`);
       }
       if (account.allowUnmentionedGroups === true) {

@@ -372,6 +372,24 @@ describe("channels command", () => {
     expect(lines.join("\n")).toMatch(/Run: (?:openclaw|openclaw)( --profile isolated)? doctor/);
   });
 
+  it("treats limited Discord message content intent as OK in status output", () => {
+    const lines = formatGatewayChannelsStatusLines({
+      channelAccounts: {
+        discord: [
+          {
+            accountId: "default",
+            enabled: true,
+            configured: true,
+            application: { intents: { messageContent: "limited" } },
+          },
+        ],
+      },
+    });
+    expect(lines.join("\n")).not.toMatch(/Warnings:/);
+    expect(lines.join("\n")).not.toMatch(/intents:content=limited/);
+    expect(lines.join("\n")).not.toMatch(/Message Content Intent is disabled/i);
+  });
+
   it("surfaces Discord permission audit issues in channels status output", () => {
     const lines = formatGatewayChannelsStatusLines({
       channelAccounts: {

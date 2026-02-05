@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { RuntimeEnv } from "../runtime.js";
+import { bluebubblesPlugin } from "../../extensions/bluebubbles/src/channel.js";
 import { discordPlugin } from "../../extensions/discord/src/channel.js";
 import { imessagePlugin } from "../../extensions/imessage/src/channel.js";
 import { signalPlugin } from "../../extensions/signal/src/channel.js";
@@ -73,6 +74,7 @@ describe("channels command", () => {
     });
     setActivePluginRegistry(
       createTestRegistry([
+        { pluginId: "bluebubbles", plugin: bluebubblesPlugin, source: "test" },
         { pluginId: "discord", plugin: discordPlugin, source: "test" },
         { pluginId: "slack", plugin: slackPlugin, source: "test" },
         { pluginId: "telegram", plugin: telegramPlugin, source: "test" },
@@ -370,6 +372,44 @@ describe("channels command", () => {
     expect(lines.join("\n")).toMatch(/Warnings:/);
     expect(lines.join("\n")).toMatch(/Message Content Intent is disabled/i);
     expect(lines.join("\n")).toMatch(/Run: (?:openclaw|openclaw)( --profile isolated)? doctor/);
+  });
+
+  it("suppresses not-configured warnings unless explicitly enabled", () => {
+    const prev = process.env.OPENCLAW_WARN_UNCONFIGURED_CHANNELS;
+    delete process.env.OPENCLAW_WARN_UNCONFIGURED_CHANNELS;
+    const lines = formatGatewayChannelsStatusLines({
+      channelAccounts: {
+        bluebubbles: [
+          {
+            accountId: "default",
+            enabled: true,
+            configured: false,
+          },
+        ],
+      },
+    });
+    expect(lines.join("\n")).not.toMatch(/Warnings:/);
+
+    process.env.OPENCLAW_WARN_UNCONFIGURED_CHANNELS = "1";
+    const withWarnings = formatGatewayChannelsStatusLines({
+      channelAccounts: {
+        bluebubbles: [
+          {
+            accountId: "default",
+            enabled: true,
+            configured: false,
+          },
+        ],
+      },
+    });
+    expect(withWarnings.join("\n")).toMatch(/Warnings:/);
+    expect(withWarnings.join("\n")).toMatch(/Not configured/i);
+
+    if (prev === undefined) {
+      delete process.env.OPENCLAW_WARN_UNCONFIGURED_CHANNELS;
+    } else {
+      process.env.OPENCLAW_WARN_UNCONFIGURED_CHANNELS = prev;
+    }
   });
 
   it("treats limited Discord message content intent as OK in status output", () => {

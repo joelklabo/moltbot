@@ -7,6 +7,7 @@ import { type OpenClawConfig, readConfigFileSnapshot } from "../../config/config
 import { callGateway } from "../../gateway/call.js";
 import { formatAge } from "../../infra/channel-summary.js";
 import { collectChannelStatusIssues } from "../../infra/channels-status-issues.js";
+import { isTruthyEnvValue } from "../../infra/env.js";
 import { defaultRuntime, type RuntimeEnv } from "../../runtime.js";
 import { formatDocsLink } from "../../terminal/links.js";
 import { theme } from "../../terminal/theme.js";
@@ -140,9 +141,17 @@ export function formatGatewayChannelsStatusLines(payload: Record<string, unknown
 
   lines.push("");
   const issues = collectChannelStatusIssues(payload);
-  if (issues.length > 0) {
+  const showUnconfigured = isTruthyEnvValue(process.env.OPENCLAW_WARN_UNCONFIGURED_CHANNELS);
+  const filteredIssues = showUnconfigured
+    ? issues
+    : issues.filter(
+        (issue) =>
+          !/not configured/i.test(issue.message) &&
+          !/channel error: not configured/i.test(issue.message),
+      );
+  if (filteredIssues.length > 0) {
     lines.push(theme.warn("Warnings:"));
-    for (const issue of issues) {
+    for (const issue of filteredIssues) {
       lines.push(
         `- ${issue.channel} ${issue.accountId}: ${issue.message}${issue.fix ? ` (${issue.fix})` : ""}`,
       );

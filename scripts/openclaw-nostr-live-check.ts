@@ -35,7 +35,10 @@ async function main() {
         payload.sessionId,
         payload.inReplyTo,
       );
-      await reply("ack from runtime test");
+      await reply("ack from runtime test", {
+        sessionId: payload.sessionId,
+        inReplyTo: payload.eventId,
+      });
     },
     onError: (error, context) => {
       console.error("bus error", context, String(error));
